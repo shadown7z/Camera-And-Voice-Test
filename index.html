@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>摄像头与音视频采集测试工具</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header {
+            text-align: center; padding: 30px 0 20px;
+            border-bottom: 1px solid #1e293b; margin-bottom: 30px;
+        }
+        header h1 { font-size: 28px; background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        header p { color: #94a3b8; margin-top: 8px; font-size: 14px; }
+        .progress-bar {
+            display: flex; justify-content: space-between; margin-bottom: 30px;
+            position: relative; padding: 0 10px;
+        }
+        .progress-bar::before {
+            content: ''; position: absolute; top: 14px; left: 30px; right: 30px;
+            height: 2px; background: #1e293b; z-index: 0;
+        }
+        .progress-step {
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            position: relative; z-index: 1; flex: 1;
+        }
+        .progress-step .circle {
+            width: 30px; height: 30px; border-radius: 50%;
+            background: #1e293b; border: 2px solid #334155;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 600; transition: all 0.3s;
+        }
+        .progress-step.active .circle { background: #38bdf8; border-color: #38bdf8; color: #0f172a; }
+        .progress-step.done .circle { background: #22c55e; border-color: #22c55e; color: #0f172a; }
+        .progress-step.error .circle { background: #ef4444; border-color: #ef4444; color: #fff; }
+        .progress-step .label { font-size: 11px; color: #64748b; text-align: center; }
+        .progress-step.active .label { color: #38bdf8; font-weight: 600; }
+        .progress-step.done .label { color: #22c55e; }
+        .progress-step.error .label { color: #ef4444; }
+        .card {
+            background: #1e293b; border-radius: 12px; padding: 24px;
+            margin-bottom: 20px; border: 1px solid #334155;
+            transition: border-color 0.3s;
+        }
+        .card:hover { border-color: #475569; }
+        .card-title {
+            font-size: 16px; font-weight: 600; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .card-title .icon { font-size: 20px; }
+        .card-title .badge {
+            font-size: 11px; padding: 2px 10px; border-radius: 10px;
+            font-weight: 500; margin-left: auto;
+        }
+        .badge-success { background: #166534; color: #86efac; }
+        .badge-error { background: #7f1d1d; color: #fca5a5; }
+        .badge-warning { background: #854d0e; color: #fde68a; }
+        .badge-info { background: #1e3a5f; color: #93c5fd; }
+        .badge-pending { background: #1e293b; color: #64748b; }
+        .video-container {
+            position: relative; background: #000; border-radius: 8px; overflow: hidden;
+            aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
+        }
+        .video-container video {
+            width: 100%; height: 100%; object-fit: contain;
+            transform: scaleX(-1);
+        }
+        .video-container .placeholder {
+            color: #475569; font-size: 14px; text-align: center; padding: 20px;
+        }
+        .video-container .placeholder .big-icon { font-size: 48px; display: block; margin-bottom: 10px; }
+        .controls {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px;
+        }
+        .btn {
+            padding: 10px 24px; border: none; border-radius: 8px;
+            font-size: 14px; font-weight: 500; cursor: pointer;
+            transition: all 0.2s; display: flex; align-items: center; gap: 8px;
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary { background: #38bdf8; color: #0f172a; }
+        .btn-primary:hover:not(:disabled) { background: #7dd3fc; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-danger:hover:not(:disabled) { background: #f87171; }
+        .btn-success { background: #22c55e; color: #0f172a; }
+        .btn-success:hover:not(:disabled) { background: #4ade80; }
+        .btn-secondary { background: #334155; color: #e2e8f0; }
+        .btn-secondary:hover:not(:disabled) { background: #475569; }
+        .device-list { list-style: none; }
+        .device-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px; border-radius: 8px;
+            background: #0f172a; margin-bottom: 8px;
+            border-left: 3px solid #334155;
+        }
+        .device-item.active { border-left-color: #22c55e; }
+        .device-item.inactive { border-left-color: #ef4444; }
+        .device-item .device-icon { font-size: 24px; }
+        .device-item .device-info { flex: 1; }
+        .device-item .device-name { font-weight: 500; font-size: 14px; }
+        .device-item .device-detail { font-size: 12px; color: #64748b; margin-top: 2px; }
+        .device-item .device-status { font-size: 11px; padding: 2px 8px; border-radius: 6px; }
+        .test-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px; margin-top: 16px;
+        }
+        .test-item {
+            background: #0f172a; border-radius: 8px; padding: 16px;
+            text-align: center;
+        }
+        .test-item .value { font-size: 28px; font-weight: 700; margin: 8px 0; }
+        .test-item .label { font-size: 12px; color: #64748b; }
+        .test-item .status-dot {
+            display: inline-block; width: 10px; height: 10px;
+            border-radius: 50%; margin-right: 6px;
+        }
+        .status-dot.green { background: #22c55e; }
+        .status-dot.red { background: #ef4444; }
+        .status-dot.yellow { background: #eab308; }
+        .audio-visualizer {
+            display: flex; align-items: center; gap: 3px; height: 60px;
+            justify-content: center; margin: 10px 0;
+        }
+        .audio-bar {
+            width: 6px; border-radius: 3px; background: #38bdf8;
+            transition: height 0.05s; height: 4px;
+        }
+        #report-section { display: none; }
+        #report-section.visible { display: block; }
+        .report-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px;
+        }
+        .report-header h2 { font-size: 20px; }
+        .report-summary {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px; margin-bottom: 20px;
+        }
+        .summary-item {
+            background: #0f172a; border-radius: 8px; padding: 16px; text-align: center;
+        }
+        .summary-item .count { font-size: 32px; font-weight: 700; }
+        .summary-item .label { font-size: 12px; color: #64748b; margin-top: 4px; }
+        .issue-item {
+            background: #0f172a; border-radius: 8px; padding: 16px;
+            margin-bottom: 10px; border-left: 3px solid #ef4444;
+        }
+        .issue-item.warning { border-left-color: #eab308; }
+        .issue-item .issue-title { font-weight: 600; font-size: 14px; }
+        .issue-item .issue-desc { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+        .issue-item .issue-solution { font-size: 12px; color: #22c55e; margin-top: 6px; }
+        .log-container {
+            background: #0f172a; border-radius: 8px; padding: 16px;
+            max-height: 200px; overflow-y: auto; font-family: 'Consolas', monospace;
+            font-size: 12px; line-height: 1.6;
+        }
+        .log-container .log-entry { padding: 2px 0; }
+        .log-container .log-info { color: #93c5fd; }
+        .log-container .log-success { color: #86efac; }
+        .log-container .log-error { color: #fca5a5; }
+        .log-container .log-warning { color: #fde68a; }
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .card { padding: 16px; }
+            .progress-step .label { font-size: 10px; }
+            .controls { flex-direction: column; }
+            .btn { justify-content: center; }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .spinner {
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid #334155; border-top-color: #38bdf8;
+            border-radius: 50%; animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .export-actions { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📷 摄像头与音视频采集测试工具</h1>
+            <p>完整检测摄像头、麦克风设备状态及音视频采集质量</p>
+        </header>
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-step active" data-step="1">
+                <div class="circle">1</div>
+                <div class="label">权限检测</div>
+            </div>
+            <div class="progress-step" data-step="2">
+                <div class="circle">2</div>
+                <div class="label">设备检测</div>
+            </div>
+            <div class="progress-step" data-step="3">
+                <div class="circle">3</div>
+                <div class="label">画面测试</div>
+            </div>
+            <div class="progress-step" data-step="4">
+                <div class="circle">4</div>
+                <div class="label">音频同步</div>
+            </div>
+            <div class="progress-step" data-step="5">
+                <div class="circle">5</div>
+                <div class="label">测试报告</div>
+            </div>
+        </div>
+        <div class="card" id="permissionCard">
+            <div class="card-title">
+                <span class="icon">🔐</span> 权限检测
+                <span class="badge badge-pending" id="permissionBadge">待检测</span>
+            </div>
+            <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">检测浏览器是否已获得摄像头和麦克风的访问权限。点击下方按钮开始检测。</p>
+            <div class="controls">
+                <button class="btn btn-primary" id="btnCheckPermission">🔍 检测权限</button>
+            </div>
+            <div id="permissionResult" style="margin-top:12px;display:none;"></div>
+        </div>
+        <div class="card" id="deviceCard">
+            <div class="card-title">
+                <span class="icon">🎥</span> 设备检测
+                <span class="badge badge-pending" id="deviceBadge">待检测</span>
+            </div>
+            <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">识别系统中可用的摄像头和麦克风设备。</p>
+            <div class="controls">
+                <button class="btn btn-primary" id="btnDetectDevices" disabled>🔍 检测设备</button>
+            </div>
+            <div id="deviceResult" style="margin-top:12px;display:none;"></div>
+        </div>
+        <div class="card" id="videoCard">
+            <div class="card-title">
+                <span class="icon">🖥️</span> 画面测试
+                <span class="badge badge-pending" id="videoBadge">待检测</span>
+            </div>
+            <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">检测摄像头取景画面清晰度、帧率、是否黑屏、闪屏、镜像、画面颠倒。</p>
+            <div class="video-container" id="videoContainer">
+                <video id="videoElement" autoplay playsinline muted></video>
+                <div class="placeholder" id="videoPlaceholder">
+                    <span class="big-icon">📹</span>点击下方按钮开始画面测试
+                </div>
+            </div>
+            <div class="controls">
+                <button class="btn btn-success" id="btnStartVideo">▶ 开启摄像头</button>
+                <button class="btn btn-danger" id="btnStopVideo" disabled>⏹ 关闭摄像头</button>
+                <button class="btn btn-primary" id="btnAnalyzeVideo" disabled>📊 分析画面</button>
+            </div>
+            <div id="videoResult" style="margin-top:12px;display:none;"></div>
+        </div>
+        <div class="card" id="audioCard">
+            <div class="card-title">
+                <span class="icon">🎤</span> 音频同步测试
+                <span class="badge badge-pending" id="audioBadge">待检测</span>
+            </div>
+            <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">测试麦克风是否正常收音，并检测音画同步情况。</p>
+            <div class="audio-visualizer" id="audioVisualizer">
+                <div class="placeholder" style="color:#475569;font-size:13px;">开启摄像头和麦克风后，音频波形将在此显示</div>
+            </div>
+            <div class="controls">
+                <button class="btn btn-success" id="btnStartAudio" disabled>🎤 开启麦克风</button>
+                <button class="btn btn-danger" id="btnStopAudio" disabled>🔇 关闭麦克风</button>
+                <button class="btn btn-primary" id="btnTestAudioSync" disabled>⏱ 测试音画同步</button>
+            </div>
+            <div id="audioResult" style="margin-top:12px;display:none;"></div>
+        </div>
+        <div class="card" id="report-section">
+            <div class="report-header">
+                <h2>📋 测试报告</h2>
+                <span class="badge badge-info" id="reportTimestamp"></span>
+            </div>
+            <div class="report-summary" id="reportSummary"></div>
+            <div id="reportContent"></div>
+            <div class="export-actions">
+                <button class="btn btn-primary" id="btnExportJSON">📥 导出 JSON</button>
+                <button class="btn btn-success" id="btnExportMarkdown">📄 导出 Markdown</button>
+                <button class="btn btn-secondary" id="btnCopyReport">📋 复制报告</button>
+                <button class="btn btn-danger" id="btnResetAll">🔄 重新测试</button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">
+                <span class="icon">📝</span> 运行日志
+                <button class="btn btn-secondary" id="btnClearLog" style="margin-left:auto;padding:4px 12px;font-size:12px;">清空</button>
+            </div>
+            <div class="log-container" id="logContainer"></div>
+        </div>
+    </div>
+    <script>
+        const state = {
+            permission: { camera: false, microphone: false },
+            devices: { cameras: [], microphones: [], all: [] },
+            videoStream: null, audioStream: null,
+            videoAnalysis: null, audioAnalysis: null,
+            syncTestResult: null,
+            testCompleted: { permission: false, device: false, video: false, audio: false },
+            isTesting: false,
+        };
+        const $ = id => document.getElementById(id);
+        const videoEl = $('videoElement');
+        const videoPlaceholder = $('videoPlaceholder');
+        const logContainer = $('logContainer');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function updateProgress(step, status = 'active') {
+            document.querySelectorAll('.progress-step').forEach((s, i) => {
+                const idx = i + 1;
+                s.classList.remove('active', 'done', 'error');
+                if (idx < step) s.classList.add('done');
+                else if (idx === step) s.classList.add(status);
+            });
+        }
+
+        async function checkPermission() {
+            if (state.isTesting) return;
+            state.isTesting = true;
+            const btn = $('btnCheckPermission');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 检测中...';
+            $('permissionBadge').textContent = '检测中';
+            $('permissionBadge').className = 'badge badge-info';
+            updateProgress(1, 'active');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                state.permission.camera = stream.getVideoTracks().length > 0;
+                state.permission.microphone = stream.getAudioTracks().length > 0;
+                stream.getTracks().forEach(t => t.stop());
+                let cameraStatus = 'granted', micStatus = 'granted';
+                try {
+                    if (navigator.permissions && navigator.permissions.query) {
+                        const camPerm = await navigator.permissions.query({ name: 'camera' });
+                        cameraStatus = camPerm.state;
+                        const micPerm = await navigator.permissions.query({ name: 'microphone' });
+                        micStatus = micPerm.state;
+                    }
+                } catch (e) {}
+                const resultDiv = $('permissionResult');
+                resultDiv.style.display = 'block';
+                const allGranted = state.permission.camera && state.permission.microphone;
+                resultDiv.innerHTML = `<div class="test-grid">
+                    <div class="test-item"><div class="status-dot ${state.permission.camera ? 'green' : 'red'}"></div><div class="label">摄像头权限</div><div class="value" style="font-size:18px;">${state.permission.camera ? '✅ 已授权' : '❌ 未授权'}</div><div class="label">Permissions API: ${cameraStatus}</div></div>
+                    <div class="test-item"><div class="status-dot ${state.permission.microphone ? 'green' : 'red'}"></div><div class="label">麦克风权限</div><div class="value" style="font-size:18px;">${state.permission.microphone ? '✅ 已授权' : '❌ 未授权'}</div><div class="label">Permissions API: ${micStatus}</div></div>
+                </div>`;
+                if (allGranted) {
+                    $('permissionBadge').textContent = '✅ 已授权';
+                    $('permissionBadge').className = 'badge badge-success';
+                    log('权限检测完成：摄像头和麦克风均已授权', 'success');
+                    state.testCompleted.permission = true;
+                    updateProgress(1, 'done');
+                    updateProgress(2, 'active');
+                    $('btnDetectDevices').disabled = false;
+                } else {
+                    $('permissionBadge').textContent = '⚠️ 部分未授权';
+                    $('permissionBadge').className = 'badge badge-warning';
+                    log('权限检测：部分权限未获取', 'warning');
+                    updateProgress(1, 'error');
+                }
+            } catch (err) {
+                log(`权限检测失败: ${err.message}`, 'error');
+                $('permissionBadge').textContent = '❌ 检测失败';
+                $('permissionBadge').className = 'badge badge-error';
+                updateProgress(1, 'error');
+                $('permissionResult').style.display = 'block';
+                $('permissionResult').innerHTML = `<div class="test-grid"><div class="test-item"><div class="status-dot red"></div><div class="label">权限检测结果</div><div class="value" style="font-size:16px;color:#fca5a5;">❌ ${err.message}</div></div></div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔍 检测权限';
+                state.isTesting = false;
+            }
+        }
+
+        async function detectDevices() {
+            if (state.isTesting) return;
+            state.isTesting = true;
+            const btn = $('btnDetectDevices');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 检测中...';
+            $('deviceBadge').textContent = '检测中';
+            $('deviceBadge').className = 'badge badge-info';
+            try {
+                try { const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); s.getTracks().forEach(t => t.stop()); } catch (e) {}
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                state.devices.all = devices;
+                state.devices.cameras = devices.filter(d => d.kind === 'videoinput');
+                state.devices.microphones = devices.filter(d => d.kind === 'audioinput');
+                const resultDiv = $('deviceResult');
+                resultDiv.style.display = 'block';
+                let html = `<div style="margin-bottom:12px;"><span class="badge badge-info">📷 摄像头: ${state.devices.cameras.length} 个</span> <span class="badge badge-info">🎤 麦克风: ${state.devices.microphones.length} 个</span></div>`;
+                if (state.devices.cameras.length > 0) {
+                    html += '<h4 style="font-size:13px;margin-bottom:8px;color:#94a3b8;">📷 摄像头设备</h4><ul class="device-list">';
+                    state.devices.cameras.forEach((cam, i) => {
+                        const label = cam.label || `摄像头 #${i + 1} (未识别)`;
+                        html += `<li class="device-item active"><span class="device-icon">📷</span><div class="device-info"><div class="device-name">${label}</div><div class="device-detail">设备ID: ${cam.deviceId ? cam.deviceId.substring(0,20)+'...' : '未知'}</div></div><span class="device-status badge badge-success">正常</span></li>`;
+                    });
+                    html += '</ul>';
+                } else {
+                    html += '<div style="color:#fca5a5;padding:12px;text-align:center;">⚠️ 未检测到摄像头设备</div>';
+                }
+                if (state.devices.microphones.length > 0) {
+                    html += '<h4 style="font-size:13px;margin:12px 0 8px;color:#94a3b8;">🎤 麦克风设备</h4><ul class="device-list">';
+                    state.devices.microphones.forEach((mic, i) => {
+                        const label = mic.label || `麦克风 #${i + 1} (未识别)`;
+                        html += `<li class="device-item active"><span class="device-icon">🎤</span><div class="device-info"><div class="device-name">${label}</div><div class="device-detail">设备ID: ${mic.deviceId ? mic.deviceId.substring(0,20)+'...' : '未知'}</div></div><span class="device-status badge badge-success">正常</span></li>`;
+                    });
+                    html += '</ul>';
+                } else {
+                    html += '<div style="color:#fca5a5;padding:12px;text-align:center;">⚠️ 未检测到麦克风设备</div>';
+                }
+                resultDiv.innerHTML = html;
+                const hasCamera = state.devices.cameras.length > 0;
+                const hasMic = state.devices.microphones.length > 0;
+                if (hasCamera && hasMic) {
+                    $('deviceBadge').textContent = '✅ 检测完成';
+                    $('deviceBadge').className = 'badge badge-success';
+                    log(`设备检测完成：${state.devices.cameras.length} 个摄像头，${state.devices.microphones.length} 个麦克风`, 'success');
+                    state.testCompleted.device = true;
+                    updateProgress(2, 'done');
+                    updateProgress(3, 'active');
+                    $('btnStartVideo').disabled = false;
+                    $('btnStartAudio').disabled = false;
+                } else if (hasCamera) {
+                    $('deviceBadge').textContent = '⚠️ 无麦克风';
+                    $('deviceBadge').className = 'badge badge-warning';
+                    log('设备检测：未检测到麦克风设备', 'warning');
+                    state.testCompleted.device = true;
+                    updateProgress(2, 'done');
+                    updateProgress(3, 'active');
+                    $('btnStartVideo').disabled = false;
+                } else {
+                    $('deviceBadge').textContent = '❌ 无摄像头';
+                    $('deviceBadge').className = 'badge badge-error';
+                    log('设备检测：未检测到摄像头设备', 'error');
+                    updateProgress(2, 'error');
+                }
+            } catch (err) {
+                log(`设备检测失败: ${err.message}`, 'error');
+                $('deviceBadge').textContent = '❌ 检测失败';
+                $('deviceBadge').className = 'badge badge-error';
+                updateProgress(2, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔍 检测设备';
+                state.isTesting = false;
+            }
+        }
+
+        async function startVideo() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
+                state.videoStream = stream;
+                videoEl.srcObject = stream;
+                videoPlaceholder.style.display = 'none';
+                videoEl.style.display = 'block';
+                $('btnStartVideo').disabled = true;
+                $('btnStopVideo').disabled = false;
+                $('btnAnalyzeVideo').disabled = false;
+                $('videoBadge').textContent = '📹 运行中';
+                $('videoBadge').className = 'badge badge-info';
+                log('摄像头已开启', 'success');
+            } catch (err) {
+                log(`开启摄像头失败: ${err.message}`, 'error');
+                $('videoBadge').textContent = '❌ 开启失败';
+                $('videoBadge').className = 'badge badge-error';
+            }
+        }
+
+        function stopVideo() {
+            if (state.videoStream) { state.videoStream.getTracks().forEach(t => t.stop()); state.videoStream = null; }
+            videoEl.srcObject = null;
+            videoEl.style.display = 'none';
+            videoPlaceholder.style.display = 'flex';
+            $('btnStartVideo').disabled = false;
+            $('btnStopVideo').disabled = true;
+            $('btnAnalyzeVideo').disabled = true;
+            $('videoBadge').textContent = '已停止';
+            $('videoBadge').className = 'badge badge-pending';
+            log('摄像头已关闭', 'info');
+        }
+
+        async function analyzeVideo() {
+            if (!state.videoStream) { log('请先开启摄像头', 'warning'); return; }
+            const btn = $('btnAnalyzeVideo');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 分析中...';
+            try {
+                const videoTrack = state.videoStream.getVideoTracks()[0];
+                const settings = videoTrack.getSettings();
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = settings.width || 640;
+                canvas.height = settings.height || 480;
+                const analysis = { resolution: `${settings.width || '未知'}×${settings.height || '未知'}`, frameRate: 0, isBlack: false, isFlickering: false, brightness: 0, contrast: 0, sharpness: 0, samples: [], blackFrames: 0, totalFrames: 0, flickerEvents: 0 };
+                const sampleCount = 60;
+                let prevAvgBrightness = 0, brightnessChanges = 0;
+                for (let i = 0; i < sampleCount; i++) {
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const pixels = imageData.data;
+                    let totalBrightness = 0;
+                    const pixelCount = pixels.length / 4;
+                    for (let j = 0; j < pixels.length; j += 4) {
+                        totalBrightness += 0.299 * pixels[j] + 0.587 * pixels[j + 1] + 0.114 * pixels[j + 2];
+                    }
+                    const avgBrightness = totalBrightness / pixelCount;
+                    analysis.samples.push(avgBrightness);
+                    if (avgBrightness < 10) analysis.blackFrames++;
+                    if (i > 0 && Math.abs(avgBrightness - prevAvgBrightness) > 50) brightnessChanges++;
+                    prevAvgBrightness = avgBrightness;
+                }
+                analysis.totalFrames = sampleCount;
+                analysis.brightness = analysis.samples.reduce((a, b) => a + b, 0) / analysis.samples.length;
+                analysis.isBlack = analysis.blackFrames > sampleCount * 0.8;
+                analysis.isFlickering = brightnessChanges > sampleCount * 0.3;
+                analysis.flickerEvents = brightnessChanges;
+                const sorted = [...analysis.samples].sort((a, b) => a - b);
+                analysis.contrast = sorted[Math.floor(sorted.length * 0.9)] - sorted[Math.floor(sorted.length * 0.1)];
+                const topHalf = ctx.getImageData(0, 0, canvas.width, canvas.height / 2);
+                const bottomHalf = ctx.getImageData(0, canvas.height / 2, canvas.width, canvas.height / 2);
+                let topBright = 0, bottomBright = 0;
+                for (let j = 0; j < topHalf.data.length; j += 4) topBright += 0.299 * topHalf.data[j] + 0.587 * topHalf.data[j + 1] + 0.114 * topHalf.data[j + 2];
+                for (let j = 0; j < bottomHalf.data.length; j += 4) bottomBright += 0.299 * bottomHalf.data[j] + 0.587 * bottomHalf.data[j + 1] + 0.114 * bottomHalf.data[j + 2];
+                analysis.isUpsideDown = (bottomBright / (bottomHalf.data.length / 4)) > (topBright / (topHalf.data.length / 4)) + 30;
+                state.videoAnalysis = analysis;
+                const resultDiv = $('videoResult');
+                resultDiv.style.display = 'block';
+                const brightnessPercent = Math.round((analysis.brightness / 255) * 100);
+                const isNormal = !analysis.isBlack && !analysis.isFlickering && brightnessPercent > 10 && brightnessPercent < 95;
+                resultDiv.innerHTML = `<div class="test-grid">
+                    <div class="test-item"><div class="status-dot ${analysis.isBlack ? 'red' : 'green'}"></div><div class="label">黑屏检测</div><div class="value" style="font-size:18px;">${analysis.isBlack ? '❌ 黑屏' : '✅ 正常'}</div><div class="label">黑帧率: ${Math.round(analysis.blackFrames / analysis.totalFrames * 100)}%</div></div>
+                    <div class="test-item"><div class="status-dot ${analysis.isFlickering ? 'red' : 'green'}"></div><div class="label">闪屏检测</div><div class="value" style="font-size:18px;">${analysis.isFlickering ? '⚠️ 检测到闪屏' : '✅ 无闪屏'}</div><div class="label">闪烁事件: ${analysis.flickerEvents} 次</div></div>
+                    <div class="test-item"><div class="status-dot ${analysis.isUpsideDown ? 'yellow' : 'green'}"></div><div class="label">画面颠倒</div><div class="value" style="font-size:18px;">${analysis.isUpsideDown ? '⚠️ 可能颠倒' : '✅ 正常'}</div><div class="label">镜像模式: 已启用</div></div>
+                    <div class="test-item"><div class="status-dot ${isNormal ? 'green' : 'yellow'}"></div><div class="label">画面质量</div><div class="value" style="font-size:18px;">${isNormal ? '✅ 正常' : '⚠️ 异常'}</div><div class="label">亮度: ${brightnessPercent}% | 对比度: ${Math.round(analysis.contrast)}</div></div>
+                    <div class="test-item"><div class="status-dot green"></div><div class="label">分辨率</div><div class="value" style="font-size:16px;">${analysis.resolution}</div><div class="label">帧率: ${Math.round(settings.frameRate || 0)}fps</div></div>
+                </div>`;
+                $('videoBadge').textContent = '✅ 分析完成';
+                $('videoBadge').className = 'badge badge-success';
+                log(`画面分析完成：分辨率 ${analysis.resolution}，亮度 ${brightnessPercent}%`, 'success');
+                state.testCompleted.video = true;
+                updateProgress(3, 'done');
+                updateProgress(4, 'active');
+                $('btnTestAudioSync').disabled = false;
+            } catch (err) {
+                log(`画面分析失败: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '📊 分析画面';
+            }
+        }
+
+        let audioContext = null;
+        let analyserNode = null;
+        let audioDataArray = null;
+        let animationId = null;
+        let audioBars = [];
+
+        function createAudioBars() {
+            const container = $('audioVisualizer');
+            container.innerHTML = '';
+            audioBars = [];
+            for (let i = 0; i < 64; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'audio-bar';
+                container.appendChild(bar);
+                audioBars.push(bar);
+            }
+        }
+
+        async function startAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                state.audioStream = stream;
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyserNode = audioContext.createAnalyser();
+                analyserNode.fftSize = 128;
+                source.connect(analyserNode);
+                audioDataArray = new Uint8Array(analyserNode.frequencyBinCount);
+                createAudioBars();
+                drawAudioVisualizer();
+                $('btnStartAudio').disabled = true;
+                $('btnStopAudio').disabled = false;
+                $('audioBadge').textContent = '🎤 运行中';
+                $('audioBadge').className = 'badge badge-info';
+                log('麦克风已开启', 'success');
+            } catch (err) {
+                log(`开启麦克风失败: ${err.message}`, 'error');
+                $('audioBadge').textContent = '❌ 开启失败';
+                $('audioBadge').className = 'badge badge-error';
+            }
+        }
+
+        function drawAudioVisualizer() {
+            if (!analyserNode) return;
+            analyserNode.getByteFrequencyData(audioDataArray);
+            for (let i = 0; i < audioBars.length; i++) {
+                const value = audioDataArray[i] || 0;
+                audioBars[i].style.height = Math.max(4, (value / 255) * 56) + 'px';
+            }
+            animationId = requestAnimationFrame(drawAudioVisualizer);
+        }
+
+        function stopAudio() {
+            if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
+            if (audioContext) { audioContext.close(); audioContext = null; }
+            if (state.audioStream) { state.audioStream.getTracks().forEach(t => t.stop()); state.audioStream = null; }
+            analyserNode = null;
+            $('audioVisualizer').innerHTML = '<div class="placeholder" style="color:#475569;font-size:13px;">麦克风已关闭</div>';
+            $('btnStartAudio').disabled = false;
+            $('btnStopAudio').disabled = true;
+            $('audioBadge').textContent = '已停止';
+            $('audioBadge').className = 'badge badge-pending';
+            log('麦克风已关闭', 'info');
+        }
+
+        async function testAudioSync() {
+            if (!state.videoStream || !state.audioStream) {
+                log('请同时开启摄像头和麦克风后再测试音画同步', 'warning');
+                return;
+            }
+            const btn = $('btnTestAudioSync');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 测试中...';
+            try {
+                const audioTrack = state.audioStream.getAudioTracks()[0];
+                const audioSettings = audioTrack.getSettings();
+                const sampleDuration = 3000;
+                const sampleInterval = 100;
+                const samples = [];
+                let hasAudio = false, maxVolume = 0;
+                for (let t = 0; t < sampleDuration; t += sampleInterval) {
+                    await new Promise(resolve => setTimeout(resolve, sampleInterval));
+                    if (analyserNode) {
+                        analyserNode.getByteFrequencyData(audioDataArray);
+                        const avg = audioDataArray.reduce((a, b) => a + b, 0) / audioDataArray.length;
+                        samples.push(avg);
+                        maxVolume = Math.max(maxVolume, avg);
+                        if (avg > 10) hasAudio = true;
+                    }
+                }
+                const avgVolume = samples.reduce((a, b) => a + b, 0) / samples.length;
+                const audioLevel = Math.round((avgVolume / 255) * 100);
+                state.audioAnalysis = { hasAudio, avgVolume, maxVolume, audioLevel, sampleCount: samples.length, sampleRate: audioSettings.sampleRate || '未知', channelCount: audioSettings.channelCount || '未知' };
+                const syncQuality = hasAudio && avgVolume > 5 ? '正常' : '异常';
+                state.syncTestResult = syncQuality;
+                const resultDiv = $('audioResult');
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `<div class="test-grid">
+                    <div class="test-item"><div class="status-dot ${hasAudio ? 'green' : 'red'}"></div><div class="label">麦克风收音</div><div class="value" style="font-size:18px;">${hasAudio ? '✅ 正常收音' : '❌ 无声音'}</div><div class="label">音量等级: ${audioLevel}%</div></div>
+                    <div class="test-item"><div class="status-dot ${syncQuality === '正常' ? 'green' : 'yellow'}"></div><div class="label">音画同步</div><div class="value" style="font-size:18px;">${syncQuality === '正常' ? '✅ 同步正常' : '⚠️ 需人工确认'}</div><div class="label">最大音量: ${Math.round(maxVolume)}</div></div>
+                    <div class="test-item"><div class="status-dot green"></div><div class="label">音频参数</div><div class="value" style="font-size:16px;">${audioSettings.sampleRate || '未知'} Hz</div><div class="label">声道: ${audioSettings.channelCount || '未知'}</div></div>
+                </div>`;
+                $('audioBadge').textContent = '✅ 测试完成';
+                $('audioBadge').className = 'badge badge-success';
+                log(`音频测试完成：${hasAudio ? '有声音' : '无声音'}，音量等级 ${audioLevel}%`, 'success');
+                state.testCompleted.audio = true;
+                updateProgress(4, 'done');
+                updateProgress(5, 'active');
+                generateReport();
+            } catch (err) {
+                log(`音频同步测试失败: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '⏱ 测试音画同步';
+            }
+        }
+
+        function generateReport() {
+            const reportSection = $('report-section');
+            reportSection.classList.add('visible');
+            $('reportTimestamp').textContent = `生成时间: ${new Date().toLocaleString()}`;
+            const issues = [];
+            let passedCount = 0;
+            const totalCount = 4;
+            if (state.permission.camera && state.permission.microphone) passedCount++;
+            else issues.push({ title: '权限未完全授权', desc: '摄像头或麦克风权限未完全获取', solution: '请在浏览器地址栏点击锁图标，开启摄像头和麦克风权限，然后刷新页面重试。', type: 'error' });
+            if (state.devices.cameras.length > 0 && state.devices.microphones.length > 0) passedCount++;
+            else {
+                if (state.devices.cameras.length === 0) issues.push({ title: '未检测到摄像头设备', desc: '系统未识别到任何摄像头设备', solution: '1. 检查摄像头是否已正确连接\n2. 检查设备管理器中的摄像头驱动状态\n3. 尝试重新安装摄像头驱动', type: 'error' });
+                if (state.devices.microphones.length === 0) issues.push({ title: '未检测到麦克风设备', desc: '系统未识别到任何麦克风设备', solution: '1. 检查麦克风是否已正确连接\n2. 检查系统音频设置中的输入设备\n3. 尝试重新安装音频驱动', type: 'warning' });
+            }
+            if (state.videoAnalysis) {
+                if (!state.videoAnalysis.isBlack && !state.videoAnalysis.isFlickering) passedCount++;
+                else {
+                    if (state.videoAnalysis.isBlack) issues.push({ title: '摄像头画面黑屏', desc: '检测到摄像头输出画面为全黑', solution: '1. 检查摄像头物理遮罩是否打开\n2. 检查摄像头是否被其他应用占用\n3. 尝试在系统相机应用中测试摄像头', type: 'error' });
+                    if (state.videoAnalysis.isFlickering) issues.push({ title: '画面闪烁', desc: '检测到画面亮度异常波动', solution: '1. 检查摄像头连接线是否松动\n2. 检查环境光源是否稳定\n3. 尝试调整摄像头帧率设置', type: 'warning' });
+                }
+            }
+            if (state.audioAnalysis) {
+                if (state.audioAnalysis.hasAudio) passedCount++;
+                else issues.push({ title: '麦克风无声音', desc: '检测到麦克风未采集到有效音频信号', solution: '1. 检查麦克风是否被静音\n2. 检查系统音频输入设备选择\n3. 检查麦克风物理连接', type: 'error' });
+            }
+            $('reportSummary').innerHTML = `
+                <div class="summary-item"><div class="count" style="color:${passedCount === totalCount ? '#22c55e' : '#eab308'}">${passedCount}/${totalCount}</div><div class="label">测试通过</div></div>
+                <div class="summary-item"><div class="count" style="color:#ef4444">${issues.filter(i => i.type === 'error').length}</div><div class="label">错误</div></div>
+                <div class="summary-item"><div class="count" style="color:#eab308">${issues.filter(i => i.type === 'warning').length}</div><div class="label">警告</div></div>
+                <div class="summary-item"><div class="count" style="color:#38bdf8">${state.devices.cameras.length}</div><div class="label">摄像头数</div></div>
+                <div class="summary-item"><div class="count" style="color:#38bdf8">${state.devices.microphones.length}</div><div class="label">麦克风数</div></div>
+            `;
+            let contentHtml = '<h3 style="margin:16px 0 12px;font-size:15px;">📊 设备状态</h3>';
+            contentHtml += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">';
+            contentHtml += '<tr style="background:#0f172a;"><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">项目</th><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">状态</th><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">详情</th></tr>';
+            contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">摄像头权限</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.permission.camera ? '✅' : '❌'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.permission.camera ? '已授权' : '未授权'}</td></tr>`;
+            contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">麦克风权限</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.permission.microphone ? '✅' : '❌'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.permission.microphone ? '已授权' : '未授权'}</td></tr>`;
+            contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">摄像头数量</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.devices.cameras.length > 0 ? '✅' : '❌'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.devices.cameras.length} 个</td></tr>`;
+            contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">麦克风数量</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.devices.microphones.length > 0 ? '✅' : '❌'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.devices.microphones.length} 个</td></tr>`;
+            contentHtml += '</table>';
+            contentHtml += '<h3 style="margin:16px 0 12px;font-size:15px;">🖥️ 画面状态</h3>';
+            contentHtml += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">';
+            contentHtml += '<tr style="background:#0f172a;"><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">项目</th><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">状态</th><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">详情</th></tr>';
+            if (state.videoAnalysis) {
+                contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">黑屏检测</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.videoAnalysis.isBlack ? '❌' : '✅'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.videoAnalysis.isBlack ? '画面黑屏' : '画面正常'}</td></tr>`;
+                contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">闪屏检测</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.videoAnalysis.isFlickering ? '⚠️' : '✅'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.videoAnalysis.isFlickering ? '检测到闪烁' : '无闪烁'}</td></tr>`;
+                contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">画面颠倒</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.videoAnalysis.isUpsideDown ? '⚠️' : '✅'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.videoAnalysis.isUpsideDown ? '可能颠倒' : '正常'}</td></tr>`;
+                contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">分辨率</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">✅</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.videoAnalysis.resolution}</td></tr>`;
+                contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">亮度</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.videoAnalysis.brightness > 10 ? '✅' : '❌'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${Math.round(state.videoAnalysis.brightness / 255 * 100)}%</td></tr>`;
+            } else {
+                contentHtml += '<tr><td colspan="3" style="padding:8px 12px;color:#64748b;">未进行画面测试</td></tr>';
+            }
+            contentHtml += '</table>';
+            contentHtml += '<h3 style="margin:16px 0 12px;font-size:15px;">🎤 音频状态</h3>';
+            contentHtml += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">';
+            contentHtml += '<tr style="background:#0f172a;"><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">项目</th><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">状态</th><th style="padding:8px 12px;text-align:left;border-bottom:1px solid #334155;">详情</th></tr>';
+            if (state.audioAnalysis) {
+                contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">麦克风收音</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.audioAnalysis.hasAudio ? '✅' : '❌'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.audioAnalysis.hasAudio ? '正常收音' : '无声音'}</td></tr>`;
+                contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">音量等级</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.audioAnalysis.audioLevel > 5 ? '✅' : '⚠️'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.audioAnalysis.audioLevel}%</td></tr>`;
+                contentHtml += `<tr><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">音画同步</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.syncTestResult === '正常' ? '✅' : '⚠️'}</td><td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${state.syncTestResult}</td></tr>`;
+            } else {
+                contentHtml += '<tr><td colspan="3" style="padding:8px 12px;color:#64748b;">未进行音频测试</td></tr>';
+            }
+            contentHtml += '</table>';
+            if (issues.length > 0) {
+                contentHtml += '<h3 style="margin:16px 0 12px;font-size:15px;">⚠️ 异常问题点与排查解决步骤</h3>';
+                issues.forEach((issue, idx) => {
+                    contentHtml += `<div class="issue-item ${issue.type === 'warning' ? 'warning' : ''}">
+                        <div class="issue-title">${idx + 1}. ${issue.title}</div>
+                        <div class="issue-desc">${issue.desc}</div>
+                        <div class="issue-solution">🔧 解决步骤：<br>${issue.solution.replace(/\n/g, '<br>')}</div>
+                    </div>`;
+                });
+            } else {
+                contentHtml += '<div style="background:#166534;color:#86efac;padding:16px;border-radius:8px;text-align:center;">✅ 所有测试项均通过，未发现异常问题</div>';
+            }
+            $('reportContent').innerHTML = contentHtml;
+            log('测试报告已生成', 'success');
+        }
+
+        function getReportData() {
+            return {
+                timestamp: new Date().toISOString(),
+                summary: { passed: Object.values(state.testCompleted).filter(Boolean).length, total: 4, cameras: state.devices.cameras.length, microphones: state.devices.microphones.length },
+                permission: state.permission,
+                devices: { cameras: state.devices.cameras.map(c => ({ label: c.label, deviceId: c.deviceId, groupId: c.groupId })), microphones: state.devices.microphones.map(m => ({ label: m.label, deviceId: m.deviceId, groupId: m.groupId })) },
+                video: state.videoAnalysis ? { resolution: state.videoAnalysis.resolution, isBlack: state.videoAnalysis.isBlack, isFlickering: state.videoAnalysis.isFlickering, isUpsideDown: state.videoAnalysis.isUpsideDown, brightness: Math.round(state.videoAnalysis.brightness), contrast: Math.round(state.videoAnalysis.contrast), blackFrameRate: Math.round(state.videoAnalysis.blackFrames / state.videoAnalysis.totalFrames * 100) } : null,
+                audio: state.audioAnalysis ? { hasAudio: state.audioAnalysis.hasAudio, audioLevel: state.audioAnalysis.audioLevel, maxVolume: Math.round(state.audioAnalysis.maxVolume), sampleRate: state.audioAnalysis.sampleRate, syncStatus: state.syncTestResult } : null,
+            };
+        }
+
+        function exportJSON() {
+            const data = getReportData();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `camera-test-report-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            log('JSON 报告已导出', 'success');
+        }
+
+        function exportMarkdown() {
+            const data = getReportData();
+            let md = `# 摄像头与音视频采集测试报告\n\n**生成时间**: ${new Date().toLocaleString()}\n\n## 测试摘要\n\n- 测试通过: ${data.summary.passed}/${data.summary.total}\n- 摄像头数: ${data.summary.cameras}\n- 麦克风数: ${data.summary.microphones}\n\n## 权限状态\n\n| 项目 | 状态 |\n|------|------|\n| 摄像头权限 | ${data.permission.camera ? '✅ 已授权' : '❌ 未授权'} |\n| 麦克风权限 | ${data.permission.microphone ? '✅ 已授权' : '❌ 未授权'} |\n\n## 设备列表\n\n### 摄像头\n`;
+            if (data.devices.cameras.length > 0) data.devices.cameras.forEach((c, i) => { md += `${i + 1}. **${c.label || '未命名'}**\n`; });
+            else md += '未检测到摄像头设备\n';
+            md += '\n### 麦克风\n';
+            if (data.devices.microphones.length > 0) data.devices.microphones.forEach((m, i) => { md += `${i + 1}. **${m.label || '未命名'}**\n`; });
+            else md += '未检测到麦克风设备\n';
+            md += '\n';
+            if (data.video) {
+                md += `## 画面测试结果\n\n| 项目 | 状态 | 详情 |\n|------|------|------|\n`;
+                md += `| 黑屏检测 | ${data.video.isBlack ? '❌' : '✅'} | ${data.video.isBlack ? '画面黑屏' : '正常'} |\n`;
+                md += `| 闪屏检测 | ${data.video.isFlickering ? '⚠️' : '✅'} | ${data.video.isFlickering ? '检测到闪烁' : '无闪烁'} |\n`;
+                md += `| 画面颠倒 | ${data.video.isUpsideDown ? '⚠️' : '✅'} | ${data.video.isUpsideDown ? '可能颠倒' : '正常'} |\n`;
+                md += `| 分辨率 | ✅ | ${data.video.resolution} |\n`;
+                md += `| 亮度 | ${data.video.brightness > 10 ? '✅' : '❌'} | ${data.video.brightness}% |\n\n`;
+            }
+            if (data.audio) {
+                md += `## 音频测试结果\n\n| 项目 | 状态 | 详情 |\n|------|------|------|\n`;
+                md += `| 麦克风收音 | ${data.audio.hasAudio ? '✅' : '❌'} | ${data.audio.hasAudio ? '正常收音' : '无声音'} |\n`;
+                md += `| 音量等级 | ${data.audio.audioLevel > 5 ? '✅' : '⚠️'} | ${data.audio.audioLevel}% |\n`;
+                md += `| 音画同步 | ${data.audio.syncStatus === '正常' ? '✅' : '⚠️'} | ${data.audio.syncStatus} |\n\n`;
+            }
+            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `camera-test-report-${new Date().toISOString().slice(0, 10)}.md`;
+            a.click();
+            URL.revokeObjectURL(url);
+            log('Markdown 报告已导出', 'success');
+        }
+
+        function copyReport() {
+            const data = getReportData();
+            navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => log('报告已复制到剪贴板', 'success')).catch(() => log('复制失败，请手动复制', 'error'));
+        }
+
+        function resetAll() {
+            stopVideo();
+            stopAudio();
+            Object.assign(state, { permission: { camera: false, microphone: false }, devices: { cameras: [], microphones: [], all: [] }, videoStream: null, audioStream: null, videoAnalysis: null, audioAnalysis: null, syncTestResult: null, testCompleted: { permission: false, device: false, video: false, audio: false }, isTesting: false });
+            ['permissionResult', 'deviceResult', 'videoResult', 'audioResult'].forEach(id => { $(id).style.display = 'none'; $(id).innerHTML = ''; });
+            ['permissionBadge', 'deviceBadge', 'videoBadge', 'audioBadge'].forEach(id => { $(id).textContent = '待检测'; $(id).className = 'badge badge-pending'; });
+            $('report-section').classList.remove('visible');
+            $('btnDetectDevices').disabled = true;
+            $('btnStartVideo').disabled = true;
+            $('btnStopVideo').disabled = true;
+            $('btnAnalyzeVideo').disabled = true;
+            $('btnStartAudio').disabled = true;
+            $('btnStopAudio').disabled = true;
+            $('btnTestAudioSync').disabled = true;
+            updateProgress(1, 'active');
+            log('已重置所有测试', 'info');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            $('btnCheckPermission').addEventListener('click', checkPermission);
+            $('btnDetectDevices').addEventListener('click', detectDevices);
+            $('btnStartVideo').addEventListener('click', startVideo);
+            $('btnStopVideo').addEventListener('click', stopVideo);
+            $('btnAnalyzeVideo').addEventListener('click', analyzeVideo);
+            $('btnStartAudio').addEventListener('click', startAudio);
+            $('btnStopAudio').addEventListener('click', stopAudio);
+            $('btnTestAudioSync').addEventListener('click', testAudioSync);
+            $('btnExportJSON').addEventListener('click', exportJSON);
+            $('btnExportMarkdown').addEventListener('click', exportMarkdown);
+            $('btnCopyReport').addEventListener('click', copyReport);
+            $('btnResetAll').addEventListener('click', resetAll);
+            $('btnClearLog').addEventListener('click', () => { logContainer.innerHTML = ''; });
+            log('测试工具已加载，请按步骤进行测试', 'info');
+        });
+    </script>
+</body>
+</html>
