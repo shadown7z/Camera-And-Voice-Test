@@ -57,6 +57,7 @@ npx serve .
 <img width="1383" height="947" alt="image" src="https://github.com/user-attachments/assets/8fbad13b-6438-40b3-873d-6130722ef9b7" />
 <img width="1383" height="947" alt="image" src="https://github.com/user-attachments/assets/9bfa51b8-1bff-4ae1-a367-9ea2404449eb" />
 <img width="1383" height="947" alt="image" src="https://github.com/user-attachments/assets/06178e2a-2a77-4375-a818-e94d2acd9edd" />
+<img width="1383" height="947" alt="image" src="https://github.com/user-attachments/assets/c0c33c8c-b22d-4c86-98fa-d86080a42239" />
 
 ## 🧪 检测项说明
 
